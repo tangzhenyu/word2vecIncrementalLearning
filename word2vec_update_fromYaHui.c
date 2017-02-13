@@ -241,11 +241,10 @@ void SortVocab() {
 	long k=0;
 	for (a = 0; a < size; a++) {
 		// Words occuring less than min_count times will be discarded from the vocab
-		if ((vocab[a].cn < min_count) && (a != 0)) {
+		if (vocab[a].cn < min_count) {
 			printf("Reduce vocab\n");
 			vocab_size--;
-//			free(vocab[vocab_size].word);   //free
-			free(vocab[a].word);   //free
+			free(vocab[vocab_size].word);   //free
 		} else {
 			// Hash will be re-computed, as after the sorting it is not actual
 

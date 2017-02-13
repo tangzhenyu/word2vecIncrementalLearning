@@ -15,43 +15,84 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <malloc.h>
+#include <stdlib.h>
+#include <time.h>
 
 const long long max_size = 2000;         // max length of strings
-const long long N = 100;                  // number of closest words that will be shown
+const long long N = 500;                  // number of closest words that will be shown
 const long long max_w = 50;              // max length of vocabulary entries
 
+#define MAX_STRING 100
+void ReadWord(char *word, FILE *fin) {
+  int a = 0, ch;
+  while (!feof(fin)) {
+    ch = fgetc(fin);
+    if (ch == 13) continue;
+    if ((ch == ' ') || (ch == '\t') || (ch == '\n')) {
+      if (a > 0) {
+        if (ch == '\n') ungetc(ch, fin);
+        break;
+      }
+      if (ch == '\n') {
+        strcpy(word, (char *)"</s>");
+        return;
+      } else continue;
+    }
+    word[a] = ch;
+    a++;
+    if (a >= MAX_STRING - 1) a--;   // Truncate too long words
+  }
+  word[a] = 0;
+}
+
 int main(int argc, char **argv) {
-  FILE *f;
+  FILE *f,*f_out;
   char st1[max_size];
-  char bestw[N][max_size];
-  char file_name[max_size], st[100][max_size];
+  char *bestw[N];
+  char file_name[max_size], st[100][max_size],output_name[max_size];
   float dist, len, bestd[N], vec[max_size];
   long long words, size, a, b, c, d, cn, bi[100];
-  char ch;
   float *M;
   char *vocab;
+  char word[MAX_STRING];
+  clock_t begin;
   if (argc < 2) {
     printf("Usage: ./distance <FILE>\nwhere FILE contains word projections in the BINARY FORMAT\n");
     return 0;
   }
   strcpy(file_name, argv[1]);
   f = fopen(file_name, "rb");
+  if (argc > 2){
+	strcpy(output_name,argv[2]);
+	f_out=fopen(output_name,"wb");
+  }
   if (f == NULL) {
     printf("Input file not found\n");
     return -1;
   }
-  fscanf(f, "%lld", &words);
-  fscanf(f, "%lld", &size);
+  ReadWord(word, f);
+  words = atoi(word);
+  ReadWord(word, f);
+  size = atoi(word);
   vocab = (char *)malloc((long long)words * max_w * sizeof(char));
+  for (a = 0; a < N; a++) bestw[a] = (char *)malloc(max_size * sizeof(char));
   M = (float *)malloc((long long)words * (long long)size * sizeof(float));
   if (M == NULL) {
     printf("Cannot allocate memory: %lld MB    %lld  %lld\n", (long long)words * size * sizeof(float) / 1048576, words, size);
     return -1;
   }
   for (b = 0; b < words; b++) {
-    fscanf(f, "%s%c", &vocab[b * max_w], &ch);
-    for (a = 0; a < size; a++) fread(&M[a + b * size], sizeof(float), 1, f);
+    a = 0;
+    while (1) {
+      vocab[b * max_w + a] = fgetc(f);
+      if (feof(f) || (vocab[b * max_w + a] == ' ')) break;
+      if ((a < max_w) && (vocab[b * max_w + a] != '\n')) a++;
+    }
+    vocab[b * max_w + a] = 0;
+    for (a = 0; a < size; a++) {
+        ReadWord(word,f); 
+        M[a + b * size] = atof(word); 
+    }
     len = 0;
     for (a = 0; a < size; a++) len += M[a + b * size] * M[a + b * size];
     len = sqrt(len);
@@ -99,6 +140,8 @@ int main(int argc, char **argv) {
       }
     }
     if (b == -1) continue;
+    begin = clock();
+
     printf("\n                                              Word       Cosine distance\n------------------------------------------------------------------------\n");
     for (a = 0; a < size; a++) vec[a] = 0;
     for (b = 0; b < cn; b++) {
@@ -109,7 +152,7 @@ int main(int argc, char **argv) {
     for (a = 0; a < size; a++) len += vec[a] * vec[a];
     len = sqrt(len);
     for (a = 0; a < size; a++) vec[a] /= len;
-    for (a = 0; a < N; a++) bestd[a] = 0;
+    for (a = 0; a < N; a++) bestd[a] = -1;
     for (a = 0; a < N; a++) bestw[a][0] = 0;
     for (c = 0; c < words; c++) {
       a = 0;
@@ -129,9 +172,11 @@ int main(int argc, char **argv) {
         }
       }
     }
-    for (a = 0; a < N; a++) printf("%s:%f\n", bestw[a], bestd[a]);
-	//for (a = 0; a < N; a++) printf("%s\n", bestw[a]);
-    printf("%s\n","");
+    for (a = 0; a < N; a++) { 
+		printf("%50s\t\t%f\n", bestw[a], bestd[a]); 
+		fprintf(f_out,"%50s\t\t%f\n",bestw[a], bestd[a]);
+	}
+    printf("time spent = %f seconds\n", (double)(clock() - begin) / CLOCKS_PER_SEC);
   }
   return 0;
 }

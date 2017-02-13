@@ -63,6 +63,12 @@ real alpha = 0.025, starting_alpha, sample = 0;
 real *syn0, *syn1, *syn1neg, *expTable, *syn1_old,*syn1neg_old, *syn0_old;
 clock_t start;
 
+int *word_to_group;
+int *group_to_table;
+int class_number;
+char negative_classes_file[MAX_STRING];
+
+
 int hs = 1, negative = 0, update = 0;
 const int table_size = 1e8;
 //int table_size = 1e8;
@@ -113,6 +119,71 @@ table[a] = a;
 }
 }
 */
+
+void InitClassUnigramTable() {
+	long long a,c; 
+	printf("loading class unigrams \n");
+	FILE *fin = fopen(negative_classes_file, "rb");
+	if (fin == NULL) {
+		printf("ERROR: class file not found!\n");
+		exit(1);
+	}    
+	word_to_group = (int *)malloc(vocab_size * sizeof(int));
+	
+//	memset(word_to_group,0,sizeof(int) * vocab_size);
+
+	for(a = 0; a < vocab_size; a++) word_to_group[a] = -1;
+	char class[MAX_STRING];
+	char prev_class[MAX_STRING];
+	prev_class[0] = 0; 
+	char word[MAX_STRING];
+	class_number = -1;
+	while (1) {
+		if (feof(fin)) break;
+		ReadWord(class, fin);
+		ReadWord(word, fin);
+		int word_index = SearchVocab(word);
+		if (word_index != -1){ 
+			if(strcmp(class, prev_class) != 0){
+				class_number++;
+				strcpy(prev_class, class);
+			}    
+			word_to_group[word_index] = class_number;
+		}                                                                                                                                                                   
+		ReadWord(word, fin);
+	}    
+	class_number++;
+	fclose(fin);
+
+	group_to_table = (int *)malloc(table_size * class_number * sizeof(int));//sampling a word in the group as same as current word
+	long long train_words_pow = 0;
+	real d1, power = 0.75;
+
+	for(c = 0; c < class_number; c++){
+		long long offset = c * table_size;
+		train_words_pow = 0;
+		for (a = 0; a < vocab_size; a++) 
+			if(word_to_group[a] == c) 
+				train_words_pow += pow(vocab[a].cn, power);
+		int i = 0;
+		while(word_to_group[i] != c && i < vocab_size) 
+			i++;
+		d1 = pow(vocab[i].cn, power) / (real)train_words_pow;
+		for (a = 0; a < table_size; a++) {
+			group_to_table[offset + a] = i;
+			if (a / (real)table_size > d1) {
+				i++;
+				while(word_to_group[i] != c && i < vocab_size) 
+					i++;
+				d1 += pow(vocab[i].cn, power) / (real)train_words_pow;
+			}
+			if (i >= vocab_size) 
+				while(word_to_group[i] != c && i >= 0) 
+					i--;
+		}
+	}
+}
+
 
 // Reads a single word from a file, assuming space + tab + EOL to be word boundaries
 void ReadWord(char *word, FILE *fin) {
@@ -241,11 +312,10 @@ void SortVocab() {
 	long k=0;
 	for (a = 0; a < size; a++) {
 		// Words occuring less than min_count times will be discarded from the vocab
-		if ((vocab[a].cn < min_count) && (a != 0)) {
+		if (vocab[a].cn < min_count) {
 			printf("Reduce vocab\n");
 			vocab_size--;
-//			free(vocab[vocab_size].word);   //free
-			free(vocab[a].word);   //free
+			free(vocab[vocab_size].word);   //free
 		} else {
 			// Hash will be re-computed, as after the sorting it is not actual
 
@@ -565,6 +635,7 @@ void SaveVocab() {
 		//		vocab[i].id_old,vocab[i].alpha);
 		fprintf(fo, "%s %lld %lld\n", vocab[i].word, vocab[i].cn,
 				vocab[i].id_old);
+		//printf("%f\n",vocab[i].alpha);
 	}
 	fclose(fo);
 }
@@ -1142,8 +1213,6 @@ void *TrainModelThread(void *id) {
 		exit(-1);
 	}
 
-
-	// ??????????每个进程获取一部分
 	fseek(fi, file_size / (long long) num_threads * (long long) id, SEEK_SET);
 	printf("ALL Training Word: %lld\n",train_words);
 
@@ -1166,7 +1235,8 @@ void *TrainModelThread(void *id) {
 				printf(
 						"%cAlpha: %f  Progress: %.2f%%  Words/thread/sec: %.2fk  ",
 						13, alpha,
-						word_count_actual / (real) (train_words + 1) * 100,
+						(word_count_actual + train_words_old) / (real) (train_words + train_words_old + 1) * 100,
+						//word_count_actual / (real) (train_words + 1) * 100,
 						word_count_actual
 						/ ((real) (now - start + 1)
 							/ (real) CLOCKS_PER_SEC * 1000));
@@ -1175,9 +1245,10 @@ void *TrainModelThread(void *id) {
 
 			if(update){				
 				//alpha = starting_alpha * (1 - word_count_actual / (real) (train_words + 1));
-				//alpha = starting_alpha * (1 - (word_count_actual + train_words_old) / (real) (train_words + train_words_old + 1));
-				alpha = starting_alpha * (1 - word_count_actual / (real) (train_words + 1));
+				alpha = starting_alpha * (1 - (word_count_actual + train_words_old) / (real) (train_words + train_words_old + 1));
+				printf("%f\n",alpha);
 				for(a = 0 ; a < vocab_size ; ++a){
+					//					vocab[a].alpha=starting_alpha * (1-vocab[a].actual_read/(real)(vocab[a].cn+1));
 					vocab[a].alpha=starting_alpha * (1-vocab[a].actual_read/(real)(vocab[a].cn+1));
 					if (vocab[a].alpha < starting_alpha * 0.0001)
 						vocab[a].alpha = starting_alpha * 0.0001;
@@ -1231,10 +1302,8 @@ void *TrainModelThread(void *id) {
 
 				// The subsampling randomly discards frequent words while keeping the ranking same
 				if (sample > 0) {
-					real ran = (sqrt(vocab[word].cn / (sample * (train_words+train_words_old)))
-							+ 1) * (sample * (train_words+train_words_old)) / vocab[word].cn;
-					next_random = next_random * (unsigned long long) 25214903917
-						+ 11;
+					real ran = (sqrt(vocab[word].cn / (sample * train_words)) + 1) *  (sample * train_words) / vocab[word].cn;
+					next_random = next_random * (unsigned long long) 25214903917 + 11;
 					if (ran < (next_random & 0xFFFF) / (real) 65536){
 						//printf("4444===>%lld:%f:%lld\t",vocab[word].cn,sample,train_words);
 						continue;
@@ -1260,8 +1329,7 @@ void *TrainModelThread(void *id) {
 			break;
 
 		word = sen[sentence_position];
-		//word_alpha = sen_alpha[sentence_position];
-		word_alpha = alpha;
+		word_alpha = sen_alpha[sentence_position];
 
 		if (word == -1)
 			continue;
@@ -1383,6 +1451,7 @@ void *TrainModelThread(void *id) {
 					if (last_word == -1)
 						continue;
 					l1 = last_word * layer1_size;
+
 					for (c = 0; c < layer1_size; c++)
 						neu1e[c] = 0;
 					// HIERARCHICAL SOFTMAX
@@ -1418,10 +1487,17 @@ void *TrainModelThread(void *id) {
 								label = 1;
 							} else {
 
-								next_random = next_random
-									* (unsigned long long) 25214903917 + 11;
-								target =
-									table[(next_random >> 16) % table_size];
+								next_random = next_random * (unsigned long long) 25214903917 + 11;
+								//target = table[(next_random >> 16) % table_size];
+								if(word_to_group != NULL && word_to_group[word] != -1){ //if word has type
+									target = word;
+									while(target == word) {
+										target = group_to_table[word_to_group[word]*table_size + (next_random >> 16) % table_size];
+										next_random = next_random * (unsigned long long)25214903917 + 11;
+									}
+								}else{//else random sample 
+									target = table[(next_random >> 16) % table_size];
+								}
 
 								if (target == 0){//skip the <\s> word{
 									target = next_random % (vocab_size - 1) + 1;
@@ -1456,6 +1532,7 @@ void *TrainModelThread(void *id) {
 								//printf("%f\n",g);
 								for (c = 0; c < layer1_size; c++)
 									neu1e[c] += g * syn1neg[c + l2];
+								//update the negative vector 
 								for (c = 0; c < layer1_size; c++){
 									syn1neg[c + l2] += g * syn0[c + l1];
 								}
@@ -1563,6 +1640,8 @@ void *TrainModelThread(void *id) {
 		if (negative > 0)
 			InitUnigramTable();
 
+		if (negative_classes_file[0] != 0) 
+			InitClassUnigramTable();
 		//exit(-1);
 		printf("Complete InitUnigramTable!!\n");
 		start = clock();
@@ -1710,6 +1789,7 @@ void *TrainModelThread(void *id) {
 		model_input_file[0] = 0;
 		model_output_file[0] = 0;
 		vec_input_file[0] = 0;
+		negative_classes_file[0] = 0;
 		if ((i = ArgPos((char *) "-size", argc, argv)) > 0)
 			layer1_size = atoi(argv[i + 1]);
 		if ((i = ArgPos((char *) "-train", argc, argv)) > 0)
@@ -1759,6 +1839,8 @@ void *TrainModelThread(void *id) {
 			update = atoi(argv[i + 1]);
 		if ((i = ArgPos((char *) "-iterations", argc, argv)) > 0)
 			iterations = atoi(argv[i + 1]);
+		if ((i = ArgPos((char *)"-negative-classes", argc, argv)) > 0) 
+			strcpy(negative_classes_file, argv[i + 1]);
 
 
 		vocab = (struct vocab_word *) calloc(vocab_max_size,

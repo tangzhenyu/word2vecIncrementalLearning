@@ -46,8 +46,8 @@ int main(int argc, char **argv)
   fscanf(f, "%lld", &words);
   if (threshold) if (words > threshold) words = threshold;
   fscanf(f, "%lld", &size);
-  vocab = (char *)malloc(words * max_w * sizeof(char));//save vocab
-  M = (float *)malloc(words * size * sizeof(float));//save word vector
+  vocab = (char *)malloc(words * max_w * sizeof(char));
+  M = (float *)malloc(words * size * sizeof(float));
   if (M == NULL) {
     printf("Cannot allocate memory: %lld MB\n", words * size * sizeof(float) / 1048576);
     return -1;
@@ -56,12 +56,10 @@ int main(int argc, char **argv)
     fscanf(f, "%s%c", &vocab[b * max_w], &ch);
     for (a = 0; a < max_w; a++) vocab[b * max_w + a] = toupper(vocab[b * max_w + a]);
     for (a = 0; a < size; a++) fread(&M[a + b * size], sizeof(float), 1, f);
-
-    //normalize
     len = 0;
     for (a = 0; a < size; a++) len += M[a + b * size] * M[a + b * size];
     len = sqrt(len);
-    for (a = 0; a < size; a++) M[a + b * size] /= len;  //normalize
+    for (a = 0; a < size; a++) M[a + b * size] /= len;
   }
   fclose(f);
   TCN = 0;
@@ -99,13 +97,13 @@ int main(int argc, char **argv)
     b3 = b;
     for (a = 0; a < N; a++) bestd[a] = 0;
     for (a = 0; a < N; a++) bestw[a][0] = 0;
+    for (a = 0; a < size; a++) vec[a] = (M[a + b2 * size] - M[a + b1 * size]) + M[a + b3 * size];
     TQ++;
     if (b1 == words) continue;
     if (b2 == words) continue;
     if (b3 == words) continue;
     for (b = 0; b < words; b++) if (!strcmp(&vocab[b * max_w], st4)) break;
     if (b == words) continue;
-    for (a = 0; a < size; a++) vec[a] = (M[a + b2 * size] - M[a + b1 * size]) + M[a + b3 * size];
     TQS++;
     for (c = 0; c < words; c++) {
       if (c == b1) continue;
