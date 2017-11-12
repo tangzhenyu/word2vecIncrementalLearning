@@ -5,3 +5,9 @@ From the newly added function,every word has its own learning parameter,which up
 #Usage
 run*.sh is the scripts for running word2vec.
 Everyone can get some running information from these scripts.
+
+#TransE + Word2vec
+Adding triple information, like from freebase, when train Word2vec model, which make better word embedding.
+
+#Lexical Relational + Word2vec
+Try to utilize synonyms corpus antonyms corpus and triple corpus in the CBOW model trainng, for better word embedding, which can discover more complex word relation representation and get better performance in synonyms and antonyms recognition.
