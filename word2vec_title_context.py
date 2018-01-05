@@ -32,9 +32,9 @@ url = 'http://mattmahoney.net/dc/'
 #
 # filename = maybe_download('text8.zip', 31344016)
 
-filename="ticont_cut_50"
-vecname="titleStyle_word2vec_150_blockversion"
-dicname="Dic_150_blockversion"
+filename="sample_title_doc.txt"
+vecname="vector.bin"
+dicname="dict"
 # Read the data into a list of strings.
 def read_data(filename):
   """Extract the first file enclosed in a zip file as a list of words"""
@@ -45,10 +45,10 @@ def read_data(filename):
 words = read_data(filename)
 print('Data size', len(words))
 # Step 2: Build the dictionary and replace rare words with UNK token.
-blockLine=100#每次对10000条新闻shuffle采样
+blockLine=100#shuffle frequency
 batch_size = 1000
-num_steps = 1600000 #37000 左右差不多一个epoch,即一共3700万数据
-embedding_size = 64  # Dimension of the embedding vector
+num_steps = 1600000 #
+embedding_size = 64  # embedding length
 vocabulary_size = 100000
 dictionary = dict()
 def build_dataset(words):
@@ -76,10 +76,10 @@ print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 linedata = open(filename, 'r').readlines()
 blockmax=(len(linedata)//blockLine)
 
-def generate_shuffleData(block):#一次调一块数据然后shuffle，block控制“返回当前块数据”，一次1万行数据
+def generate_shuffleData(block):#
   batch_label=[]
   block=block%(blockmax-1)
-  for line in linedata[block*blockLine:(block+1)*blockLine]:#一次1万条新闻
+  for line in linedata[block*blockLine:(block+1)*blockLine]:#
     sp=line.replace("\n","").split("###")#title,content
     for cw in sp[1].split(" "):
       con=[]
